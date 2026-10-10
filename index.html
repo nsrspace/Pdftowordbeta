@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF to Word Converter by NSR Space</title>
+<meta name="description" content="Convert PDF to editable Word documents — privately in your browser.">
+<style>
+:root{--navy:#0b1f3a;--blue:#2f80ed;--bg:#f4f7fb;--line:#d5deec;--ink:#14213d}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Bengali","Nirmala UI",sans-serif;background:var(--bg);color:var(--ink);line-height:1.55}
+header{background:var(--navy);color:#fff;padding:18px 16px;border-bottom:3px solid var(--blue)}
+.w{max-width:680px;margin:0 auto;padding:0 14px}
+header .w{padding:0}
+h1{margin:0;font-size:1.4rem}
+header p{margin:2px 0;color:#cfe0ff}
+.tag{color:#8fbcff;font-weight:600}
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;margin:14px 0;box-shadow:0 2px 10px rgba(11,31,58,.06)}
+.drop{border:2px dashed var(--blue);border-radius:14px;padding:22px;text-align:center;background:#f8fbff}
+.drop.over{background:#e3efff}
+.btn{min-height:50px;padding:0 22px;border:0;border-radius:12px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer;width:100%;margin-top:10px}
+.btn.alt{background:#e8f0fd;color:var(--navy)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+label{display:block;font-weight:600;margin-top:12px}
+select,input[type=text]{width:100%;min-height:46px;padding:10px;border:1px solid #b9c7dc;border-radius:10px;font:inherit;margin-top:4px;background:#fff}
+.chk{display:flex;gap:10px;align-items:center;font-weight:400}
+.chk input{width:22px;height:22px}
+:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+progress{width:100%;height:18px;margin-top:8px}
+.err{background:#fdecec;border:1px solid #e5a1a1;color:#7a1414;padding:12px;border-radius:10px;margin-top:12px}
+.warn{background:#fff8e5;border:1px solid #ecd28a;padding:12px;border-radius:10px;font-size:.92rem;margin-top:12px}
+.note,small{color:#52627d;font-size:.9rem}
+pre{white-space:pre-wrap;word-wrap:break-word;background:#f4f7fb;padding:10px;border-radius:10px;max-height:220px;overflow:auto;font:inherit}
+footer{text-align:center;padding:20px 14px;color:#52627d}
+footer a{color:var(--blue);font-weight:600}
+[hidden]{display:none!important}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.js" defer></script>
+</head>
+<body>
+<header><div class="w">
+  <h1>PDF to Word Converter</h1>
+  <p>Convert PDF files into editable Word documents.</p>
+  <p class="tag">by NSR Space</p>
+</div></header>
+
+<main class="w">
+<div id="libErr" class="err" role="alert" hidden></div>
+
+<section id="s-pick" class="card" aria-label="Choose PDF">
+  <p class="note" style="margin-top:0">Convert PDF to editable Word documents — privately in your browser.</p>
+  <div id="drop" class="drop">
+    <p>Drop a PDF here, or</p>
+    <input id="file" type="file" accept="application/pdf,.pdf" hidden>
+    <button class="btn" id="choose" type="button">Choose PDF File</button>
+  </div>
+  <div id="err" class="err" role="alert" hidden></div>
+  <div id="info" hidden>
+    <p><strong id="fname"></strong><br><span id="fmeta"></span></p>
+    <label for="mode">Processing mode</label>
+    <select id="mode">
+      <option value="text">Automatic / Fast Text Extraction</option>
+      <option value="ocr">Scanned PDF / OCR (all pages)</option>
+    </select>
+    <label class="chk" id="autoRow"><input type="checkbox" id="autoOcr" checked> OCR pages that contain no embedded text</label>
+    <label for="lang">OCR recognition language</label>
+    <select id="lang">
+      <option value="ben+eng" selected>Bengali + English</option>
+      <option value="ben">Bengali</option>
+      <option value="eng">English</option>
+    </select>
+    <label class="chk"><input type="checkbox" id="lowres"> Low-resolution OCR (uses less memory, may be less accurate)</label>
+    <label for="title">Document title (optional)</label>
+    <input type="text" id="title" maxlength="120">
+    <div class="warn">OCR is slow on phones, can drain battery, and is not 100% accurate. Recommended: about 30 pages or fewer per run on a phone. Layout, columns and tables will likely need manual correction in Word.</div>
+    <button class="btn" id="go" type="button" disabled>Convert to Word</button>
+  </div>
+</section>
+
+<section id="s-run" class="card" hidden aria-live="polite">
+  <h2 style="margin-top:0">Converting…</h2>
+  <p id="status">Starting…</p>
+  <progress id="bar" max="100" value="0"></progress>
+  <p><span id="pct">0%</span></p>
+  <button class="btn alt" id="cancel" type="button">Cancel</button>
+</section>
+
+<section id="s-done" class="card" hidden>
+  <h2 style="margin-top:0">Conversion complete</h2>
+  <p id="summary"></p>
+  <p class="note">Text preview (first part). Please review the Word file for errors.</p>
+  <pre id="preview"></pre>
+  <button class="btn" id="dl" type="button">Download Word (.docx)</button>
+  <button class="btn alt" id="again" type="button">Convert Another PDF</button>
+</section>
+
+<section class="card">
+  <h3 style="margin-top:0">Privacy</h3>
+  <p class="note">Your PDF is processed in your browser memory and is not intentionally uploaded by this app. The app does download JavaScript libraries and OCR language data from CDNs (cdnjs, jsDelivr, and the Tesseract language-data host). No analytics, accounts, or document storage.</p>
+</section>
+</main>
+
+<footer>
+  <p>Made for convenient, private document conversion.</p>
+  <a href="https://www.facebook.com/share/1KtqwWbLAi/" target="_blank" rel="noopener noreferrer">NSR Space</a>
+</footer>
+
+<script>
+window.addEventListener("load", function () {
+"use strict";
+var $ = function (i) { return document.getElementById(i); };
+var REC = 30, MIN_CHARS = 25;
+var S = { pdf: null, file: null, cancel: false, busy: false, blob: null, worker: null, cur: null, total: 1 };
+
+function err(m) { var e = $("err"); e.textContent = m || ""; e.hidden = !m; }
+function status(t) { $("status").textContent = t; }
+function prog(f) { var p = Math.round(Math.max(0, Math.min(1, f)) * 100); $("bar").value = p; $("pct").textContent = p + "%"; }
+function screen(id) { ["s-pick", "s-run", "s-done"].forEach(function (x) { $(x).hidden = x !== id; }); }
+
+/* capability check */
+var missing = [];
+if (!window.pdfjsLib) missing.push("PDF.js");
+if (!window.Tesseract) missing.push("Tesseract.js");
+if (!window.docx) missing.push("docx");
+if (missing.length) {
+  $("libErr").textContent = "Could not load: " + missing.join(", ") + ". Check your internet connection or content blocker, then reload the page.";
+  $("libErr").hidden = false;
+  $("choose").disabled = true;
+  return;
+}
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+/* file selection */
+$("choose").onclick = function () { $("file").click(); };
+$("file").onchange = function () { loadFile(this.files[0]); };
+var drop = $("drop");
+["dragover", "dragenter"].forEach(function (e) { drop.addEventListener(e, function (ev) { ev.preventDefault(); drop.classList.add("over"); }); });
+["dragleave", "drop"].forEach(function (e) { drop.addEventListener(e, function (ev) { ev.preventDefault(); drop.classList.remove("over"); }); });
+drop.addEventListener("drop", function (ev) { loadFile(ev.dataTransfer.files[0]); });
+
+function fmtSize(b) { return b > 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB"; }
+
+function resetPdf() {
+  if (S.pdf) { try { S.pdf.destroy(); } catch (e) {} }
+  S.pdf = null; S.file = null; $("info").hidden = true; $("go").disabled = true;
+}
+
+async function loadFile(f) {
+  err(""); resetPdf();
+  if (!f) return;
+  if (!/\.pdf$/i.test(f.name) || (f.type && f.type !== "application/pdf")) { err("This is not a PDF file. Please choose a file ending in .pdf."); return; }
+  try {
+    var buf = await f.arrayBuffer();
+    var head = new TextDecoder("latin1").decode(new Uint8Array(buf, 0, Math.min(1024, buf.byteLength)));
+    if (head.indexOf("%PDF-") < 0) { err("This file does not look like a valid PDF."); return; }
+    S.pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  } catch (e) {
+    err(e && e.name === "PasswordException"
+      ? "This PDF is password-protected. Remove the password in another app, then try again."
+      : "This PDF could not be read. It may be corrupted. Try re-saving or re-exporting it.");
+    return;
+  }
+  S.file = f;
+  $("fname").textContent = f.name;
+  $("fmeta").textContent = fmtSize(f.size) + " · " + S.pdf.numPages + " page(s) · Ready";
+  $("info").hidden = false; $("go").disabled = false;
+  if (S.pdf.numPages > REC) err("This PDF has " + S.pdf.numPages + " pages. On phones, about " + REC + " pages or fewer is recommended, especially for OCR.");
+}
+
+$("mode").onchange = function () { $("autoRow").hidden = this.value === "ocr"; };
+
+/* text extraction */
+async function pageParagraphs(page) {
+  var tc = await page.getTextContent(), lines = [], cur = "", y = null;
+  tc.items.forEach(function (it) {
+    if (typeof it.str !== "string") return;
+    var iy = it.transform[5];
+    if (y !== null && Math.abs(iy - y) > 2) { lines.push({ t: cur.trim(), y: y }); cur = ""; }
+    cur += it.str; y = iy;
+  });
+  if (y !== null) lines.push({ t: cur.trim(), y: y });
+  lines = lines.filter(function (l) { return l.t; });
+  var gaps = [];
+  for (var i = 1; i < lines.length; i++) { var g = lines[i - 1].y - lines[i].y; if (g > 0) gaps.push(g); }
+  gaps.sort(function (a, b) { return a - b; });
+  var med = gaps.length ? gaps[Math.floor(gaps.length / 2)] : 0;
+  var paras = [], buf = "";
+  lines.forEach(function (l, i) {
+    if (i > 0 && med && (lines[i - 1].y - l.y) > med * 1.5) { paras.push(buf); buf = ""; }
+    buf += (buf ? " " : "") + l.t;
+  });
+  if (buf) paras.push(buf);
+  return paras;
+}
+function charCount(p) { return p.join("").replace(/\s/g, "").length; }
+
+/* OCR */
+async function ensureWorker(langs) {
+  if (S.worker) return S.worker;
+  status("Loading OCR engine and language data (first time can take a while)…");
+  var CORE = "https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0";
+  S.worker = await Tesseract.createWorker(langs, 1, {
+    workerPath: "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js",
+    corePath: CORE,
+    langPath: "https://tessdata.projectnaptha.com/4.0.0",
+    logger: function (m) {
+      if (m.status === "recognizing text" && S.cur) prog((S.cur.base + m.progress * S.cur.span) / S.total);
+      else if (/loading|initializ/.test(m.status)) status("Preparing OCR: " + m.status + (m.progress ? " " + Math.round(m.progress * 100) + "%" : ""));
+    }
+  });
+  return S.worker;
+}
+async function ocrPage(page, langs, low, base, span) {
+  var vp = page.getViewport({ scale: low ? 1.3 : 2 });
+  var c = document.createElement("canvas");
+  c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+  await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+  var w = await ensureWorker(langs);
+  S.cur = { base: base, span: span };
+  var r = await w.recognize(c);
+  c.width = c.height = 0;
+  return r.data.text.split(/\n\s*\n/).map(function (p) { return p.replace(/\s*\n\s*/g, " ").trim(); }).filter(Boolean);
+}
+
+/* convert */
+$("go").onclick = async function () {
+  if (!S.pdf || S.busy) return;
+  var n = S.pdf.numPages, mode = $("mode").value, langs = $("lang").value.split("+");
+  var low = $("lowres").checked, auto = $("autoOcr").checked;
+  if (mode === "ocr" && n > REC && !confirm("OCR on " + n + " pages may be very slow and could crash a phone browser. Continue?")) return;
+  S.cancel = false; S.busy = true; S.total = n; err(""); prog(0); screen("s-run");
+  var pages = [], nText = 0, nOcr = 0, nEmpty = 0;
+  try {
+    for (var i = 1; i <= n; i++) {
+      if (S.cancel) throw new Error("cancel");
+      status("Page " + i + " of " + n + ": reading…");
+      var page = await S.pdf.getPage(i), paras = [];
+      if (mode === "text") paras = await pageParagraphs(page);
+      var needOcr = mode === "ocr" || (auto && charCount(paras) < MIN_CHARS);
+      if (needOcr) {
+        status("Page " + i + " of " + n + ": running OCR…");
+        paras = await ocrPage(page, langs, low, i - 1, 1);
+        nOcr++;
+      } else if (charCount(paras)) nText++;
+      if (!charCount(paras)) nEmpty++;
+      pages.push(paras);
+      page.cleanup();
+      prog(i / n);
+    }
+    status("Building Word document…");
+    var d = docx, font = { ascii: "Calibri", hAnsi: "Calibri", eastAsia: "Calibri", cs: "Nirmala UI" };
+    var run = function (t) { return new d.TextRun({ text: t, font: font, size: 24, sizeComplexScript: 24 }); };
+    var kids = [], title = $("title").value.trim();
+    if (title) kids.push(new d.Paragraph({ heading: d.HeadingLevel.TITLE, spacing: { after: 240 }, children: [new d.TextRun({ text: title, font: font, bold: true, size: 40, sizeComplexScript: 40 })] }));
+    pages.forEach(function (paras, idx) {
+      if (!paras.length) paras = [""];
+      paras.forEach(function (p, j) {
+        kids.push(new d.Paragraph({ pageBreakBefore: idx > 0 && j === 0, spacing: { after: 160, line: 300 }, children: [run(p)] }));
+      });
+    });
+    var doc = new d.Document({ creator: "NSR Space", title: title || "Converted document", sections: [{ properties: { page: { margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } }, children: kids }] });
+    S.blob = await d.Packer.toBlob(doc);
+    var all = pages.map(function (p) { return p.join("\n\n"); }).join("\n\n— page break —\n\n");
+    $("preview").textContent = all.slice(0, 1500) || "(No text was found.)";
+    $("summary").textContent = n + " page(s): " + nText + " from embedded text, " + nOcr + " by OCR, " + nEmpty + " with no text found. OCR is not 100% accurate.";
+    prog(1); screen("s-done");
+  } catch (e) {
+    screen("s-pick");
+    if (e && e.message === "cancel") err("Conversion cancelled.");
+    else err("Conversion failed. This can be caused by low memory, a blocked language-data download, or a blocked CDN. Try low-resolution OCR, fewer pages, or reload and retry.");
+  } finally {
+    S.busy = false; S.cur = null;
+    if (S.worker) { try { await S.worker.terminate(); } catch (e2) {} S.worker = null; }
+  }
+};
+
+$("cancel").onclick = function () {
+  S.cancel = true; status("Cancelling…");
+  if (S.worker) { try { S.worker.terminate(); } catch (e) {} S.worker = null; }
+};
+
+$("dl").onclick = function () {
+  if (!S.blob) return;
+  var base = (S.file ? S.file.name : "document").replace(/\.pdf$/i, "").replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 60) || "document";
+  var url = URL.createObjectURL(S.blob), a = document.createElement("a");
+  a.href = url; a.download = base + "_converted.docx";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+};
+
+$("again").onclick = function () {
+  S.blob = null; $("preview").textContent = ""; $("file").value = ""; $("title").value = "";
+  resetPdf(); err(""); screen("s-pick");
+};
+});
+</script>
+</body>
+</html>
